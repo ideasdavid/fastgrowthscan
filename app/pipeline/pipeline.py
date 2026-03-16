@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.api.companies_house import CompaniesHouseClient
 from app.parser.ixbrl import parse_accounts, ParseResult
+from app.parser.pdf_ai import parse_pdf_with_ai
 from app.models.db import Company, IndexResult, PipelineRun, ResultStatus
 from app.config import (
     MIN_TURNOVER_GBP, MIN_GROWTH_PERCENT,
-    INDEX_YEAR_ACCOUNT_PERIODS, INCLUDED_SIC_CODES, MAX_CANDIDATES
+    INDEX_YEAR_ACCOUNT_PERIODS, INCLUDED_SIC_CODES, MAX_CANDIDATES,
+    ANTHROPIC_API_KEY
 )
 
 logger = logging.getLogger(__name__)
@@ -233,7 +235,16 @@ class FastGrowthPipeline:
         parsed = parse_accounts(content)
 
         if not parsed.success:
-            # Try the baseline filing separately if growth filing parse failed
+            # iXBRL parse failed — try AI PDF fallback if Anthropic key is configured
+            if ANTHROPIC_API_KEY:
+                logger.info(f"iXBRL parse failed for {company_number} ({parsed.reason}) — trying AI PDF fallback")
+                ai_result = self._try_ai_pdf_parse(
+                    content, doc_url, baseline_doc_url,
+                    growth_filing, baseline_filing
+                )
+                if ai_result is not None:
+                    return ai_result
+            # Fall through to manual review
             if baseline_doc_url and "No turnover" in (parsed.reason or ""):
                 return ResultStatus.MANUAL_REVIEW, {
                     "reason": parsed.reason,
@@ -320,6 +331,97 @@ class FastGrowthPipeline:
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _try_ai_pdf_parse(
+        self,
+        content: bytes,
+        doc_url: str,
+        baseline_doc_url: str,
+        growth_filing: dict,
+        baseline_filing: dict,
+    ) -> Optional[tuple]:
+        """
+        Attempt to extract turnover using AI PDF parsing.
+        Returns (status, data) tuple if successful, None if AI also fails.
+        """
+        try:
+            ai = parse_pdf_with_ai(content)
+            if not ai.success or len(ai.periods) < 2:
+                # Try downloading the baseline separately and combining
+                if baseline_doc_url:
+                    baseline_content = self.client.get_document_content(baseline_doc_url)
+                    if baseline_content:
+                        ai_base = parse_pdf_with_ai(baseline_content)
+                        if ai_base.success and ai.periods and ai_base.periods:
+                            # Merge periods from both documents
+                            all_periods = ai.periods + ai_base.periods
+                            ai.periods = all_periods
+                            ai.success = True
+
+            if not ai.success or len(ai.periods) < 2:
+                logger.info("AI PDF parse also failed — flagging for manual review")
+                return None
+
+            # Sort periods by end date descending
+            periods = sorted(
+                [p for p in ai.periods if p.period_end],
+                key=lambda p: p.period_end,
+                reverse=True
+            )
+
+            if len(periods) < 2:
+                return None
+
+            growth_p = periods[0]
+            baseline_p = periods[1]
+
+            # Validate years match expected
+            growth_end_year = int(growth_p.period_end[:4]) if growth_p.period_end else 0
+            baseline_end_year = int(baseline_p.period_end[:4]) if baseline_p.period_end else 0
+
+            if growth_end_year != self.growth_year or baseline_end_year != self.baseline_year:
+                logger.info(
+                    f"AI parse: period mismatch {baseline_end_year}/{growth_end_year} "
+                    f"vs expected {self.baseline_year}/{self.growth_year}"
+                )
+                return None
+
+            if baseline_p.turnover is None or growth_p.turnover is None:
+                return None
+
+            logger.info(
+                f"AI PDF parse SUCCESS: baseline={baseline_p.turnover:,.0f} "
+                f"growth={growth_p.turnover:,.0f}"
+            )
+
+            data = {
+                "baseline_start": baseline_p.period_start,
+                "baseline_end": baseline_p.period_end,
+                "baseline_turnover": baseline_p.turnover,
+                "growth_start": growth_p.period_start,
+                "growth_end": growth_p.period_end,
+                "growth_turnover": growth_p.turnover,
+                "baseline_filing_id": baseline_filing.get("transaction_id"),
+                "growth_filing_id": growth_filing.get("transaction_id"),
+                "baseline_doc_url": baseline_doc_url,
+                "growth_doc_url": doc_url,
+            }
+
+            if baseline_p.turnover < MIN_TURNOVER_GBP:
+                data["growth_percent"] = self._calc_growth(baseline_p.turnover, growth_p.turnover)
+                return ResultStatus.DOES_NOT_QUALIFY, data
+
+            growth_pct = self._calc_growth(baseline_p.turnover, growth_p.turnover)
+            data["growth_percent"] = growth_pct
+
+            if growth_pct >= MIN_GROWTH_PERCENT:
+                return ResultStatus.QUALIFIES, data
+            else:
+                return ResultStatus.DOES_NOT_QUALIFY, data
+
+        except Exception as e:
+            logger.error(f"AI PDF parse exception: {e}")
+            return None
 
     @staticmethod
     def _find_filing_for_year(filings: list[dict], year: int) -> Optional[dict]:

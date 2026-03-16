@@ -8,6 +8,9 @@ CH_API_KEY = os.getenv("CH_API_KEY", "")
 CH_BASE_URL = "https://api.company-information.service.gov.uk"
 CH_DOCUMENT_URL = "https://document-api.company-information.service.gov.uk"
 
+# Anthropic — for AI-powered PDF parsing fallback
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/fast_growth_index")
 
