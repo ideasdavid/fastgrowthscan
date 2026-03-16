@@ -104,4 +104,8 @@ class PipelineRun(Base):
     manual_review_count = Column(Integer)
     does_not_qualify_count = Column(Integer)
     error_count = Column(Integer)
+    baseline_year = Column(Integer)   # e.g. 2023 = FY22/23
+    growth_year = Column(Integer)     # e.g. 2024 = FY23/24
+    sector = Column(String(100))       # e.g. technology
+    sector_label = Column(String(200)) # e.g. Technology & Software
     notes = Column(Text)
