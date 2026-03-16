@@ -33,3 +33,4 @@ fast-growth-index/
 ## Index Years
 Each run is stored by index year. Results are cumulative — you can
 query and compare across years from the dashboard.
+# Fast Growth Index
