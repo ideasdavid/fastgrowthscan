@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fast Growth Index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1a1e2a;
+  --border:#252a38;--border2:#2e3448;
+  --text:#e8e6df;--muted:#6b7290;--muted2:#8b91aa;
+  --gold:#c8a96e;--gold-dim:#8a7149;
+  --green:#4ade80;--green-bg:#0d2318;
+  --amber:#f59e0b;--amber-bg:#1f1508;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px}
+.shell{display:flex;height:100vh;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:256px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sb-head{padding:28px 20px 20px;border-bottom:1px solid var(--border)}
+.sb-logo{font-family:'Playfair Display',serif;font-size:17px;font-weight:900;color:var(--gold);line-height:1.25}
+.sb-sub{font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-top:4px;font-weight:500}
+.sb-sec{padding:16px 12px 6px}
+.sb-label{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 6px;margin-bottom:5px}
+.year-btn,.tab-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 10px;border-radius:7px;border:none;background:transparent;color:var(--muted2);font-size:13px;cursor:pointer;transition:background .12s,color .12s;text-align:left;font-family:'DM Sans',sans-serif;font-weight:500}
+.year-btn{gap:8px;justify-content:flex-start}
+.year-btn:hover,.tab-btn:hover{background:var(--surface2);color:var(--text)}
+.year-btn.active{background:var(--surface2);color:var(--gold);border:1px solid var(--gold-dim)}
+.ydot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.year-btn.active .ydot{background:var(--gold)}
+.tab-btn.active{background:var(--surface2);color:var(--text)}
+.tab-btn.active.q{color:var(--green)}
+.tab-btn.active.r{color:var(--amber)}
+.tab-count{font-family:'DM Mono',monospace;font-size:11px;background:var(--border2);padding:2px 7px;border-radius:4px;color:var(--muted2)}
+.sb-div{height:1px;background:var(--border);margin:6px 12px}
+.sb-foot{margin-top:auto;padding:16px 12px;border-top:1px solid var(--border)}
+.run-info{font-size:11px;color:var(--muted);line-height:1.7;padding:0 6px}
+.run-info strong{color:var(--muted2);font-weight:600}
+
+/* Main */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{padding:24px 32px 0;flex-shrink:0}
+.tb-title{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.tb-meta{font-size:12px;color:var(--muted);margin-top:5px;font-weight:300}
+.tb-meta strong{color:var(--gold);font-weight:600}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:18px 32px 0;flex-shrink:0}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.stat-val{font-family:'Playfair Display',serif;font-size:32px;font-weight:900;letter-spacing:-.04em;line-height:1}
+.stat.g .stat-val{color:var(--green)}
+.stat.a .stat-val{color:var(--amber)}
+.stat.go .stat-val{color:var(--gold)}
+.stat.pl .stat-val{color:var(--text)}
+.stat-lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:5px}
+
+/* Controls */
+.controls{display:flex;gap:8px;align-items:center;padding:16px 32px 0;flex-shrink:0;flex-wrap:wrap}
+.search-wrap{position:relative;flex:1;min-width:180px;max-width:320px}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px;pointer-events:none}
+.search-input{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:8px 10px 8px 32px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s}
+.search-input::placeholder{color:var(--muted)}
+.search-input:focus{border-color:var(--gold-dim)}
+select.fsel{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:8px 28px 8px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7290' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;min-width:130px}
+.export-btn{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--gold);color:#0d0f14;border:none;border-radius:7px;padding:8px 14px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.export-btn:hover{opacity:.85}
+
+/* Table */
+.table-wrap{flex:1;overflow:auto;padding:14px 32px 32px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{position:sticky;top:0;z-index:5}
+th{background:var(--surface);color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{color:var(--text)}
+th.sorted{color:var(--gold)}
+td{padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--surface2);cursor:pointer}
+tr.sel td{background:rgba(200,169,110,.07)}
+.rank{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);width:36px;display:inline-block;text-align:right}
+.rank.top{color:var(--gold);font-weight:600}
+.co-name{font-weight:600;color:var(--text)}
+.co-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);display:block;margin-top:2px}
+.mono{font-family:'DM Mono',monospace}
+.pill{display:inline-flex;align-items:center;font-family:'DM Mono',monospace;font-size:12px;font-weight:500;padding:3px 9px;border-radius:20px}
+.pill.q{background:var(--green-bg);color:var(--green);border:1px solid rgba(74,222,128,.2)}
+.pill.r{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.pill.d{color:var(--muted)}
+.rtag{font-size:11px;color:var(--muted2);background:var(--surface2);padding:2px 7px;border-radius:4px}
+.chl{color:var(--gold-dim);font-size:12px;text-decoration:none;font-family:'DM Mono',monospace;transition:color .1s}
+.chl:hover{color:var(--gold)}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted);padding:60px}
+.empty .ico{font-size:32px;opacity:.35}
+
+/* Detail panel */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;justify-content:flex-end}
+.panel{width:460px;background:var(--surface);border-left:1px solid var(--border);height:100%;overflow-y:auto;animation:slideIn .18s cubic-bezier(.25,.46,.45,.94)}
+@keyframes slideIn{from{transform:translateX(32px);opacity:0}}
+.ph{padding:24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.ph-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;line-height:1.2}
+.ph-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px}
+.close{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--muted);width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .1s;flex-shrink:0}
+.close:hover{color:var(--text);border-color:var(--muted)}
+.pb{padding:20px 24px;display:flex;flex-direction:column;gap:20px}
+.ps-lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:10px}
+.kv{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--border);gap:12px}
+.kv:last-child{border-bottom:none}
+.kk{font-size:12px;color:var(--muted2)}
+.vv{font-family:'DM Mono',monospace;font-size:13px;color:var(--text);text-align:right}
+.vv.big{font-family:'Playfair Display',serif;font-size:22px;font-weight:700}
+.vv.grn{color:var(--green)}
+.vv.gld{color:var(--gold)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;margin-top:8px}
+.badge.Q{background:var(--green-bg);color:var(--green);border:1px solid rgba(74,222,128,.3)}
+.badge.M{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+.badge.D{background:var(--surface2);color:var(--muted2);border:1px solid var(--border2)}
+.review-box{background:var(--amber-bg);border:1px solid rgba(245,158,11,.2);border-radius:7px;padding:10px 12px;font-size:12px;color:var(--amber);line-height:1.5}
+.dlink{display:flex;align-items:center;gap:7px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--muted2);font-size:12px;text-decoration:none;transition:all .14s;margin-bottom:6px}
+.dlink:last-child{margin-bottom:0}
+.dlink:hover{border-color:var(--gold-dim);color:var(--gold)}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-head">
+      <div class="sb-logo">Fast Growth<br>Index</div>
+      <div class="sb-sub">Ideas Fest Platform</div>
+    </div>
+    <div class="sb-sec">
+      <div class="sb-label">Index Year</div>
+      <div id="year-list"></div>
+    </div>
+    <div class="sb-div"></div>
+    <div class="sb-sec">
+      <div class="sb-label">View</div>
+      <div id="tab-list"></div>
+    </div>
+    <div class="sb-foot">
+      <div class="run-info" id="run-info"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="tb-title" id="page-title">Qualifying Companies</div>
+      <div class="tb-meta" id="page-meta"></div>
+    </div>
+    <div class="stats" id="stats-row"></div>
+    <div class="controls">
+      <div class="search-wrap">
+        <span class="search-icon">⌕</span>
+        <input class="search-input" id="search-input" placeholder="Search company name…" oninput="onSearch(this.value)"/>
+      </div>
+      <select class="fsel" id="region-select" onchange="onRegion(this.value)">
+        <option value="">All regions</option>
+      </select>
+      <button class="export-btn" onclick="doExport()">↓ Export CSV</button>
+    </div>
+    <div class="table-wrap" id="table-wrap"></div>
+  </main>
+</div>
+<div id="detail-root"></div>
+
+<script>
+// ── Mock Data ──────────────────────────────────────────────────────────────
+const MOCK_Q = [
+  {rank:1,  num:"12847301", name:"Crestline Digital Ltd",          status:"QUALIFIES", region:"Greater London",     sic:["62012"],         inc:"2018-03-14", bt:{s:"2023-04-01",e:"2024-03-31",v:1420000},  gt:{s:"2024-04-01",e:"2025-03-31",v:4970000},  pct:250.0},
+  {rank:2,  num:"09234715", name:"Verdant Energy Solutions Ltd",   status:"QUALIFIES", region:"Yorkshire",           sic:["35113"],         inc:"2017-07-22", bt:{s:"2023-04-01",e:"2024-03-31",v:2100000},  gt:{s:"2024-04-01",e:"2025-03-31",v:6930000},  pct:230.0},
+  {rank:3,  num:"11029384", name:"Northgate Biologics Ltd",        status:"QUALIFIES", region:"East of England",     sic:["72110"],         inc:"2019-01-08", bt:{s:"2023-01-01",e:"2023-12-31",v:1850000},  gt:{s:"2024-01-01",e:"2024-12-31",v:5735000},  pct:210.0},
+  {rank:4,  num:"10384726", name:"Meridian Fulfilment Group Ltd",  status:"QUALIFIES", region:"West Midlands",       sic:["52290","49410"], inc:"2016-11-30", bt:{s:"2023-04-01",e:"2024-03-31",v:3400000},  gt:{s:"2024-04-01",e:"2025-03-31",v:9860000},  pct:190.0},
+  {rank:5,  num:"13847201", name:"Ironclad Cyber Security Ltd",    status:"QUALIFIES", region:"Greater London",      sic:["62090"],         inc:"2019-06-17", bt:{s:"2023-04-01",e:"2024-03-31",v:1290000},  gt:{s:"2024-04-01",e:"2025-03-31",v:3612000},  pct:180.0},
+  {rank:6,  num:"08374610", name:"Aurora Workforce Technologies",  status:"QUALIFIES", region:"North West England",  sic:["78200"],         inc:"2015-09-03", bt:{s:"2023-04-01",e:"2024-03-31",v:1780000},  gt:{s:"2024-04-01",e:"2025-03-31",v:4628000},  pct:160.0},
+  {rank:7,  num:"12038471", name:"Pinnacle Construction Group",    status:"QUALIFIES", region:"South East England",  sic:["41201"],         inc:"2018-04-25", bt:{s:"2023-07-01",e:"2024-06-30",v:4100000},  gt:{s:"2024-07-01",e:"2025-06-30",v:10250000}, pct:150.0},
+  {rank:8,  num:"09847362", name:"Helix Health Diagnostics Ltd",   status:"QUALIFIES", region:"Scotland",            sic:["86900"],         inc:"2017-02-14", bt:{s:"2023-04-01",e:"2024-03-31",v:2200000},  gt:{s:"2024-04-01",e:"2025-03-31",v:5280000},  pct:140.0},
+  {rank:9,  num:"11283947", name:"Solstice Renewable Energy Ltd",  status:"QUALIFIES", region:"South West England",  sic:["35111"],         inc:"2018-08-19", bt:{s:"2023-04-01",e:"2024-03-31",v:1560000},  gt:{s:"2024-04-01",e:"2025-03-31",v:3588000},  pct:130.0},
+  {rank:10, num:"10293847", name:"Vantage Logistics Solutions",    status:"QUALIFIES", region:"East Midlands",       sic:["52100","49410"], inc:"2016-05-11", bt:{s:"2023-04-01",e:"2024-03-31",v:3800000},  gt:{s:"2024-04-01",e:"2025-03-31",v:8360000},  pct:120.0},
+  {rank:11, num:"13029481", name:"Ember Studio Ltd",               status:"QUALIFIES", region:"Greater London",      sic:["74100"],         inc:"2019-10-07", bt:{s:"2023-04-01",e:"2024-03-31",v:1100000},  gt:{s:"2024-04-01",e:"2025-03-31",v:2310000},  pct:110.0},
+  {rank:12, num:"08293041", name:"Bluewater Analytics Ltd",        status:"QUALIFIES", region:"Wales",               sic:["63110"],         inc:"2015-03-28", bt:{s:"2023-04-01",e:"2024-03-31",v:2400000},  gt:{s:"2024-04-01",e:"2025-03-31",v:4944000},  pct:106.0},
+  {rank:13, num:"11938472", name:"Cortex Procurement Ltd",         status:"QUALIFIES", region:"North East England",  sic:["46190"],         inc:"2018-12-01", bt:{s:"2023-04-01",e:"2024-03-31",v:1670000},  gt:{s:"2024-04-01",e:"2025-03-31",v:3407000},  pct:104.0},
+  {rank:14, num:"09182736", name:"Kinetic EV Infrastructure Ltd",  status:"QUALIFIES", region:"West Midlands",       sic:["45200"],         inc:"2017-09-15", bt:{s:"2023-04-01",e:"2024-03-31",v:5200000},  gt:{s:"2024-04-01",e:"2025-03-31",v:10504000}, pct:102.0},
+  {rank:15, num:"12748392", name:"Lattice Fintech Ltd",            status:"QUALIFIES", region:"Greater London",      sic:["64190"],         inc:"2019-04-22", bt:{s:"2023-04-01",e:"2024-03-31",v:1380000},  gt:{s:"2024-04-01",e:"2025-03-31",v:2787400},  pct:102.0},
+];
+const MOCK_R = [
+  {rank:null, num:"11029374", name:"Hartwell Construction Services Ltd", status:"MANUAL_REVIEW", region:"South East England", sic:["41201"], inc:"2017-06-14", bt:{s:null,e:null,v:null}, gt:{s:null,e:null,v:null}, pct:null, reason:"No turnover tags found — company may file abbreviated accounts (no P&L)"},
+  {rank:null, num:"09283741", name:"Thornfield Media Group Ltd",         status:"MANUAL_REVIEW", region:"Greater London",     sic:["59111"], inc:"2016-03-08", bt:{s:null,e:null,v:null}, gt:{s:null,e:null,v:null}, pct:null, reason:"Document not downloadable — may be PDF only"},
+  {rank:null, num:"13827401", name:"Axis Property Developments Ltd",     status:"MANUAL_REVIEW", region:"North West England", sic:["68100"], inc:"2018-09-21", bt:{s:null,e:null,v:null}, gt:{s:null,e:null,v:null}, pct:null, reason:"Period mismatch: found 2023/2025 — non-standard year end"},
+  {rank:null, num:"10293748", name:"Greystone Supply Chain Ltd",         status:"MANUAL_REVIEW", region:"Yorkshire",          sic:["46900"], inc:"2015-11-17", bt:{s:null,e:null,v:null}, gt:{s:null,e:null,v:null}, pct:null, reason:"Only one accounting period found — prior year not included in filing"},
+  {rank:null, num:"11938201", name:"Falconer Recruitment Group Ltd",     status:"MANUAL_REVIEW", region:"Scotland",           sic:["78200"], inc:"2019-02-05", bt:{s:null,e:null,v:null}, gt:{s:null,e:null,v:null}, pct:null, reason:"No document metadata link found on filing"},
+];
+const MOCK_D = [
+  {rank:null, num:"08374201", name:"Ashford Retail Holdings Ltd",    status:"DOES_NOT_QUALIFY", region:"South East England", sic:["47190"], inc:"2014-04-10", bt:{s:"2023-04-01",e:"2024-03-31",v:850000},   gt:{s:"2024-04-01",e:"2025-03-31",v:1377000},  pct:62.0},
+  {rank:null, num:"09182034", name:"Clearfield Professional Services",status:"DOES_NOT_QUALIFY", region:"Greater London",    sic:["69201"], inc:"2015-07-03", bt:{s:"2023-04-01",e:"2024-03-31",v:4200000},  gt:{s:"2024-04-01",e:"2025-03-31",v:5040000},  pct:20.0},
+  {rank:null, num:"12039481", name:"Bridgewater Manufacturing Ltd",   status:"DOES_NOT_QUALIFY", region:"West Midlands",     sic:["25110"], inc:"2016-01-20", bt:{s:"2023-04-01",e:"2024-03-31",v:6800000},  gt:{s:"2024-04-01",e:"2025-03-31",v:7412000},  pct:9.0},
+];
+const COUNTS = {QUALIFIES:47, MANUAL_REVIEW:312, DOES_NOT_QUALIFY:4218};
+const REGIONS = ["Greater London","South East England","West Midlands","Yorkshire","North West England","East of England","Scotland","South West England","East Midlands","North East England","Wales"];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+  year: 2026, tab: 'QUALIFIES',
+  search: '', region: '',
+  sortCol: 'rank', sortDir: 'asc',
+  selected: null, searchTimer: null
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const gbp = n => n == null ? '—' : '£' + Number(n).toLocaleString('en-GB', {maximumFractionDigits:0});
+const pct = n => n == null ? '—' : (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '%';
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function getData() {
+  let data = state.tab === 'QUALIFIES' ? MOCK_Q : state.tab === 'MANUAL_REVIEW' ? MOCK_R : MOCK_D;
+  if (state.search) data = data.filter(r => r.name.toLowerCase().includes(state.search.toLowerCase()));
+  if (state.region) data = data.filter(r => r.region === state.region);
+  data = [...data].sort((a,b) => {
+    const dir = state.sortDir === 'asc' ? 1 : -1;
+    if (state.sortCol === 'name') return dir * a.name.localeCompare(b.name);
+    if (state.sortCol === 'bt') return dir * ((a.bt.v||0) - (b.bt.v||0));
+    if (state.sortCol === 'gt') return dir * ((a.gt.v||0) - (b.gt.v||0));
+    if (state.sortCol === 'pct') return dir * ((a.pct||0) - (b.pct||0));
+    if (state.sortCol === 'region') return dir * (a.region||'').localeCompare(b.region||'');
+    return dir * ((a.rank||999) - (b.rank||999));
+  });
+  return data;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  renderSidebar();
+  renderStats();
+  renderRegions();
+  renderTable();
+  renderDetail();
+}
+
+function renderSidebar() {
+  // Year buttons
+  document.getElementById('year-list').innerHTML =
+    `<button class="year-btn active" onclick="setYear(2026)"><span class="ydot"></span>2026 Index</button>`;
+
+  // Tab buttons
+  const tabs = [
+    {key:'QUALIFIES',      label:'Qualifies',        cls:'q', icon:'✓'},
+    {key:'MANUAL_REVIEW',  label:'Manual Review',    cls:'r', icon:'⚑'},
+    {key:'DOES_NOT_QUALIFY',label:'Does Not Qualify', cls:'d', icon:'✗'},
+  ];
+  document.getElementById('tab-list').innerHTML = tabs.map(t =>
+    `<button class="tab-btn ${t.cls} ${state.tab===t.key?'active':''}" onclick="setTab('${t.key}')">
+      <span>${t.icon} ${t.label}</span>
+      <span class="tab-count">${COUNTS[t.key]??'—'}</span>
+    </button>`
+  ).join('');
+
+  // Run info
+  document.getElementById('run-info').innerHTML =
+    `<div><strong>Last run</strong></div>
+     <div>14 Oct 2025</div>
+     <div style="margin-top:4px"><strong>Candidates</strong> 4,577</div>`;
+}
+
+function renderStats() {
+  const top = MOCK_Q[0];
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat g"><div class="stat-val">${COUNTS.QUALIFIES}</div><div class="stat-lbl">Qualifying Companies</div></div>
+    <div class="stat a"><div class="stat-val">${COUNTS.MANUAL_REVIEW}</div><div class="stat-lbl">Manual Review</div></div>
+    <div class="stat pl"><div class="stat-val">${Number(COUNTS.DOES_NOT_QUALIFY).toLocaleString()}</div><div class="stat-lbl">Did Not Qualify</div></div>
+    <div class="stat go"><div class="stat-val">${top ? Math.round(top.pct)+'%' : '—'}</div><div class="stat-lbl">Highest Growth</div></div>
+  `;
+  // Page title & meta
+  const titles = {QUALIFIES:'Qualifying Companies', MANUAL_REVIEW:'Manual Review', DOES_NOT_QUALIFY:'Did Not Qualify'};
+  document.getElementById('page-title').textContent = titles[state.tab];
+  const data = getData();
+  document.getElementById('page-meta').innerHTML =
+    `<strong>2026</strong> Index &nbsp;·&nbsp; Accounts FY23/24 vs FY24/25 &nbsp;·&nbsp; ${data.length} records shown`;
+}
+
+function renderRegions() {
+  const sel = document.getElementById('region-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All regions</option>' +
+    REGIONS.map(r => `<option value="${r}" ${r===cur?'selected':''}>${r}</option>`).join('');
+}
+
+function thArrow(col) {
+  if (state.sortCol !== col) return '<span style="opacity:.3"> ↕</span>';
+  return `<span style="color:var(--gold)"> ${state.sortDir==='asc'?'↑':'↓'}</span>`;
+}
+
+function renderTable() {
+  const data = getData();
+  const wrap = document.getElementById('table-wrap');
+  if (!data.length) {
+    wrap.innerHTML = `<div class="empty"><div class="ico">◎</div><div>No results match your filters</div></div>`;
+    return;
+  }
+  const showRank = state.tab === 'QUALIFIES';
+  const rows = data.map(r => {
+    const pillCls = r.status==='QUALIFIES'?'q':r.status==='MANUAL_REVIEW'?'r':'d';
+    const pctVal = r.pct != null ? `<span class="pill ${pillCls}">${pct(r.pct)}</span>` : '<span style="color:var(--muted)">—</span>';
+    const regionHtml = r.region ? `<span class="rtag">${esc(r.region)}</span>` : '<span style="color:var(--muted)">—</span>';
+    const rankHtml = showRank ? `<td><span class="rank ${r.rank<=3?'top':''}">${r.rank?'#'+r.rank:'—'}</span></td>` : '';
+    const chUrl = `https://find-and-update.company-information.service.gov.uk/company/${r.num}`;
+    return `<tr class="${state.selected?.num===r.num?'sel':''}" onclick="selectRow('${r.num}')">
+      ${rankHtml}
+      <td><div class="co-name">${esc(r.name)}</div><span class="co-num">${r.num}</span></td>
+      <td class="mono">${gbp(r.bt.v)}</td>
+      <td class="mono">${gbp(r.gt.v)}</td>
+      <td>${pctVal}</td>
+      <td>${regionHtml}</td>
+      <td onclick="event.stopPropagation()"><a class="chl" href="${chUrl}" target="_blank">↗</a></td>
+    </tr>`;
+  }).join('');
+
+  const rankTh = showRank ? `<th class="${state.sortCol==='rank'?'sorted':''}" onclick="sortBy('rank')">Rank${thArrow('rank')}</th>` : '';
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      ${rankTh}
+      <th class="${state.sortCol==='name'?'sorted':''}" onclick="sortBy('name')">Company${thArrow('name')}</th>
+      <th class="${state.sortCol==='bt'?'sorted':''}" onclick="sortBy('bt')" style="width:155px">Baseline Turnover${thArrow('bt')}</th>
+      <th class="${state.sortCol==='gt'?'sorted':''}" onclick="sortBy('gt')" style="width:155px">Growth Turnover${thArrow('gt')}</th>
+      <th class="${state.sortCol==='pct'?'sorted':''}" onclick="sortBy('pct')" style="width:110px">Growth${thArrow('pct')}</th>
+      <th class="${state.sortCol==='region'?'sorted':''}" onclick="sortBy('region')" style="width:155px">Region${thArrow('region')}</th>
+      <th style="width:60px">CH</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderDetail() {
+  const root = document.getElementById('detail-root');
+  const r = state.selected;
+  if (!r) { root.innerHTML = ''; return; }
+  const chUrl = `https://find-and-update.company-information.service.gov.uk/company/${r.num}`;
+  const badgeCls = r.status==='QUALIFIES'?'Q':r.status==='MANUAL_REVIEW'?'M':'D';
+  const badgeLbl = r.status==='QUALIFIES'?'✓ Qualifies':r.status==='MANUAL_REVIEW'?'⚑ Review':'✗ DNQ';
+
+  const finSection = r.status !== 'MANUAL_REVIEW' ? `
+    <div>
+      <div class="ps-lbl">Financials</div>
+      <div class="kv"><span class="kk">Baseline turnover</span><span class="vv">${gbp(r.bt.v)}</span></div>
+      <div class="kv"><span class="kk">Baseline period</span><span class="vv" style="font-size:11px">${r.bt.s||'—'} → ${r.bt.e||'—'}</span></div>
+      <div class="kv"><span class="kk">Growth year turnover</span><span class="vv">${gbp(r.gt.v)}</span></div>
+      <div class="kv"><span class="kk">Growth period</span><span class="vv" style="font-size:11px">${r.gt.s||'—'} → ${r.gt.e||'—'}</span></div>
+    </div>` : '';
+
+  const growthSection = r.status === 'QUALIFIES' ? `
+    <div>
+      <div class="ps-lbl">Growth</div>
+      <div class="kv"><span class="kk">Year-on-year growth</span><span class="vv big grn">${pct(r.pct)}</span></div>
+      <div class="kv"><span class="kk">Index rank</span><span class="vv big gld">#${r.rank}</span></div>
+    </div>` : '';
+
+  const reviewSection = r.reason ? `
+    <div>
+      <div class="ps-lbl">Flagged for review</div>
+      <div class="review-box">⚑ ${esc(r.reason)}</div>
+    </div>` : '';
+
+  root.innerHTML = `
+    <div class="overlay" onclick="if(event.target===this)closeDetail()">
+      <div class="panel">
+        <div class="ph">
+          <div>
+            <div class="ph-title">${esc(r.name)}</div>
+            <div class="ph-num">${r.num}</div>
+            <span class="badge ${badgeCls}">${badgeLbl}</span>
+          </div>
+          <button class="close" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="pb">
+          ${growthSection}
+          ${reviewSection}
+          ${finSection}
+          <div>
+            <div class="ps-lbl">Company</div>
+            <div class="kv"><span class="kk">Region</span><span class="vv">${r.region||'—'}</span></div>
+            <div class="kv"><span class="kk">SIC codes</span><span class="vv" style="font-size:11px">${(r.sic||[]).join(', ')||'—'}</span></div>
+            <div class="kv"><span class="kk">Incorporated</span><span class="vv">${r.inc||'—'}</span></div>
+          </div>
+          <div>
+            <div class="ps-lbl">Documents</div>
+            <a class="dlink" href="${chUrl}" target="_blank">↗ Companies House profile</a>
+            <a class="dlink" href="${chUrl}/filing-history" target="_blank">↗ Filing history</a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Events ─────────────────────────────────────────────────────────────────
+function setYear(y) { state.year = y; state.selected = null; render(); }
+function setTab(t)  { state.tab  = t; state.sortCol = t==='QUALIFIES'?'rank':'name'; state.sortDir='asc'; state.selected=null; render(); }
+function sortBy(col){ state.sortDir = state.sortCol===col && state.sortDir==='asc' ? 'desc' : 'asc'; state.sortCol=col; render(); }
+function onRegion(v){ state.region = v; state.selected = null; render(); }
+function closeDetail(){ state.selected = null; renderDetail(); document.querySelectorAll('tr.sel').forEach(r=>r.classList.remove('sel')); }
+
+function selectRow(num) {
+  const all = state.tab==='QUALIFIES'?MOCK_Q:state.tab==='MANUAL_REVIEW'?MOCK_R:MOCK_D;
+  state.selected = all.find(r => r.num === num) || null;
+  render();
+}
+
+function onSearch(val) {
+  clearTimeout(state.searchTimer);
+  state.searchTimer = setTimeout(() => { state.search = val; state.selected = null; renderTable(); renderStats(); }, 250);
+}
+
+function doExport() {
+  const data = state.tab==='QUALIFIES'?MOCK_Q:state.tab==='MANUAL_REVIEW'?MOCK_R:MOCK_D;
+  const header = ['Rank','Company Name','Company Number','Status','Region','SIC Codes','Baseline Turnover','Growth Turnover','Growth %'];
+  const rows = data.map(r => [r.rank||'',r.name,r.num,r.status,r.region||'',(r.sic||[]).join('; '),r.bt.v||'',r.gt.v||'',r.pct!=null?r.pct.toFixed(1)+'%':'']);
+  const csv = [header,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `fast-growth-index-2026-${state.tab.toLowerCase()}.csv`;
+  a.click();
+}
+
+// Keyboard close
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeDetail(); });
+
+// ── Init ───────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
