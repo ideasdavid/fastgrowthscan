@@ -15,6 +15,7 @@ import os
 
 from app.models.db import Company, IndexResult, ResultStatus, PipelineRun
 from app.models.session import get_db, init_db
+from app.api.pipeline_control import router as pipeline_router
 
 app = FastAPI(title="Fast Growth Index", version="1.0.0")
 
@@ -29,6 +30,8 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
+
+app.include_router(pipeline_router)
 
 
 # Serve the React dashboard
