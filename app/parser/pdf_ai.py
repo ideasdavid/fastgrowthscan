@@ -97,6 +97,8 @@ def parse_pdf_with_ai(pdf_content: bytes) -> AIParseResult:
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
+    import time
+    time.sleep(2)  # Anthropic rate limit buffer
 
     try:
         resp = requests.post(

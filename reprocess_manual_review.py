@@ -73,7 +73,7 @@ def reprocess(index_year: int, limit: int = None):
     stats = {"converted_qualifies": 0, "converted_dnq": 0, "still_manual": 0, "error": 0}
 
     for i, result in enumerate(results, 1):
-        company_number = result.company_number
+        company_number = result.company_number.zfill(8)
 
         try:
             # Get filing history
@@ -110,7 +110,7 @@ def reprocess(index_year: int, limit: int = None):
                 stats["still_manual"] += 1
                 continue
 
-            content = client.get_document_content(doc_url)
+            content = client.get_pdf_content(doc_url)
             if not content:
                 stats["still_manual"] += 1
                 continue

@@ -173,6 +173,33 @@ class CompaniesHouseClient:
         """
         return self._get(document_url, base="")
 
+    def get_pdf_content(self, document_url: str) -> Optional[bytes]:
+        """Download the PDF version of a filing document specifically."""
+        try:
+            meta = self.get_document_metadata(document_url)
+            resources = meta.get("resources", {})
+            if "application/pdf" not in resources:
+                logger.warning(f"No PDF found for {document_url}")
+                return None
+            # The download URL is the document metadata URL with /content appended
+            # and Accept header set to application/pdf
+            base_url = document_url if not document_url.endswith("/") else document_url[:-1]
+            content_url = f"{base_url}/content"
+            elapsed = time.time() - self._last_call
+            if elapsed < API_RATE_LIMIT_DELAY:
+                time.sleep(API_RATE_LIMIT_DELAY - elapsed)
+            resp = self.session.get(
+                content_url,
+                headers={"Accept": "application/pdf"},
+                timeout=REQUEST_TIMEOUT
+            )
+            self._last_call = time.time()
+            resp.raise_for_status()
+            return resp.content
+        except Exception as e:
+            logger.error(f"Failed to download PDF {document_url}: {e}")
+            return None
+
     def get_document_content(self, document_url: str) -> Optional[bytes]:
         """
         Download the actual iXBRL/XML document content.
