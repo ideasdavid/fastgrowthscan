@@ -69,7 +69,7 @@ def parse_pdf_with_ai(pdf_content: bytes) -> AIParseResult:
     pdf_b64 = base64.standard_b64encode(pdf_content).decode("utf-8")
 
     payload = {
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 1024,
         "messages": [
             {
