@@ -98,46 +98,57 @@ def parse_pdf_with_ai(pdf_content: bytes) -> AIParseResult:
         "content-type": "application/json",
     }
     import time
-    time.sleep(2)  # Anthropic rate limit buffer
 
-    try:
-        resp = requests.post(
-            ANTHROPIC_API_URL,
-            json=payload,
-            headers=headers,
-            timeout=60,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        raw_text = data["content"][0]["text"].strip()
-        logger.info(f"AI extraction response: {raw_text[:200]}")
-
-        # Parse JSON response
-        periods = _parse_ai_response(raw_text)
-
-        if periods is None:
-            return AIParseResult(
-                success=False,
-                periods=[],
-                reason="AI response could not be parsed as JSON"
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(
+                ANTHROPIC_API_URL,
+                json=payload,
+                headers=headers,
+                timeout=120,
             )
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("retry-after", 0))
+                wait = max(retry_after, 2 ** (attempt + 1))
+                logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait)
+                continue
 
-        if len(periods) == 0:
-            return AIParseResult(
-                success=False,
-                periods=[],
-                reason="AI found no turnover figures in document (likely balance sheet only)"
-            )
+            resp.raise_for_status()
+            data = resp.json()
 
-        return AIParseResult(success=True, periods=periods)
+            raw_text = data["content"][0]["text"].strip()
+            logger.info(f"AI extraction response: {raw_text[:200]}")
 
-    except requests.HTTPError as e:
-        logger.error(f"Anthropic API HTTP error: {e}")
-        return AIParseResult(success=False, periods=[], reason=f"API error: {e}")
-    except Exception as e:
-        logger.error(f"AI PDF parse failed: {e}")
-        return AIParseResult(success=False, periods=[], reason=str(e))
+            # Parse JSON response
+            periods = _parse_ai_response(raw_text)
+
+            if periods is None:
+                return AIParseResult(
+                    success=False,
+                    periods=[],
+                    reason="AI response could not be parsed as JSON"
+                )
+
+            if len(periods) == 0:
+                return AIParseResult(
+                    success=False,
+                    periods=[],
+                    reason="AI found no turnover figures in document (likely balance sheet only)"
+                )
+
+            return AIParseResult(success=True, periods=periods)
+
+        except requests.HTTPError as e:
+            logger.error(f"Anthropic API HTTP error: {e}")
+            return AIParseResult(success=False, periods=[], reason=f"API error: {e}")
+        except Exception as e:
+            logger.error(f"AI PDF parse failed: {e}")
+            return AIParseResult(success=False, periods=[], reason=str(e))
+
+    logger.error(f"Anthropic API rate limited after {max_retries} retries")
+    return AIParseResult(success=False, periods=[], reason="Rate limited after max retries")
 
 
 def _parse_ai_response(text: str) -> Optional[list[AIParsedPeriod]]:
