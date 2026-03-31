@@ -95,6 +95,7 @@ def parse_pdf_with_ai(pdf_content: bytes) -> AIParseResult:
     headers = {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "pdfs-2024-09-25",
         "content-type": "application/json",
     }
     import time
@@ -141,7 +142,7 @@ def parse_pdf_with_ai(pdf_content: bytes) -> AIParseResult:
             return AIParseResult(success=True, periods=periods)
 
         except requests.HTTPError as e:
-            logger.error(f"Anthropic API HTTP error: {e}")
+            logger.error(f"Anthropic API HTTP error: {e} — body: {resp.text[:500]}")
             return AIParseResult(success=False, periods=[], reason=f"API error: {e}")
         except Exception as e:
             logger.error(f"AI PDF parse failed: {e}")
