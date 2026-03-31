@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 _db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(_db_url, echo=False)
+engine = create_engine(_db_url, echo=False, pool_pre_ping=True, pool_recycle=300)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

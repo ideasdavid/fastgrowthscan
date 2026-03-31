@@ -353,6 +353,7 @@ def _run_pdf_reprocess_thread(index_year: int, limit: int = None):
 
             except Exception as e:
                 logger.error(f"PDF reprocess error for {result.company_number}: {e}")
+                db.rollback()
                 still_manual += 1
 
             _active_run["candidates_processed"] = i + 1
@@ -681,6 +682,7 @@ def _run_reprocess_thread(index_year: int, limit: Optional[int]):
 
             except Exception as e:
                 logger.error(f"Reprocess error for {company_number}: {e}")
+                db.rollback()
                 stats["still_manual"] += 1
 
             _active_reprocess["processed"] = i + 1
