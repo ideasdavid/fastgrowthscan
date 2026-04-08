@@ -34,6 +34,7 @@ class PipelineStartRequest(BaseModel):
     baseline_year: int
     growth_year: int
     sector: Optional[str] = None  # None = all sectors
+    candidate_source: Optional[str] = "auto"  # "api", "bulk", or "auto"
 
 
 class PipelineStatusResponse(BaseModel):
@@ -96,9 +97,11 @@ def start_pipeline(
         "error": None,
     }
 
+    candidate_source = req.candidate_source or "auto"
+
     thread = threading.Thread(
         target=_run_pipeline_thread,
-        args=(req.index_year, req.baseline_year, req.growth_year, sic_codes, req.sector, sector_label),
+        args=(req.index_year, req.baseline_year, req.growth_year, sic_codes, req.sector, sector_label, candidate_source),
         daemon=True,
     )
     thread.start()
@@ -110,6 +113,7 @@ def start_pipeline(
         "growth_year": req.growth_year,
         "sector": req.sector,
         "sector_label": sector_label,
+        "candidate_source": candidate_source,
     }
 
 
@@ -383,7 +387,8 @@ def _run_pdf_reprocess_thread(index_year: int, limit: int = None):
 
 def _run_pipeline_thread(
     index_year: int, baseline_year: int, growth_year: int,
-    sic_codes: list, sector: str, sector_label: str
+    sic_codes: list, sector: str, sector_label: str,
+    candidate_source: str = "auto",
 ):
     global _active_run
     db = SessionLocal()
@@ -398,7 +403,9 @@ def _run_pipeline_thread(
         if sic_codes:
             cfg.INCLUDED_SIC_CODES = sic_codes
 
-        pipeline = FastGrowthPipeline(db=db, index_year=index_year)
+        pipeline = FastGrowthPipeline(
+            db=db, index_year=index_year, candidate_source=candidate_source
+        )
 
         # Store sector on the pipeline run record
         original_process = pipeline._process_company
@@ -710,4 +717,108 @@ def _run_reprocess_thread(index_year: int, limit: Optional[int]):
         _active_reprocess["error"] = str(e)
     finally:
         _active_reprocess["running"] = False
+        db.close()
+
+
+# ── Bulk Data Refresh ─────────────────────────────────────────────────────────
+
+_active_bulk_refresh: dict = {}
+
+
+class BulkRefreshRequest(BaseModel):
+    url: Optional[str] = None  # Optional direct URL override
+
+
+class BulkStatusResponse(BaseModel):
+    refreshing: bool = False
+    started_at: Optional[str] = None
+    total_rows: Optional[int] = None
+    error: Optional[str] = None
+    # Latest snapshot info
+    snapshot_date: Optional[str] = None
+    ingested_at: Optional[str] = None
+    rows_in_table: Optional[int] = None
+
+
+@router.post("/bulk/refresh")
+def start_bulk_refresh(
+    req: BulkRefreshRequest = BulkRefreshRequest(),
+    _: None = Depends(verify_secret),
+):
+    """Download and ingest the latest Companies House bulk data snapshot."""
+    global _active_bulk_refresh
+
+    if _active_bulk_refresh.get("refreshing"):
+        raise HTTPException(
+            status_code=409,
+            detail="Bulk data refresh already in progress"
+        )
+
+    if _active_run.get("running"):
+        raise HTTPException(
+            status_code=409,
+            detail="Pipeline is running — wait for it to complete before refreshing bulk data"
+        )
+
+    _active_bulk_refresh = {
+        "refreshing": True,
+        "started_at": datetime.utcnow().isoformat(),
+        "total_rows": None,
+        "error": None,
+    }
+
+    thread = threading.Thread(
+        target=_run_bulk_refresh_thread,
+        args=(req.url,),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"status": "started"}
+
+
+@router.get("/bulk/status", response_model=BulkStatusResponse)
+def get_bulk_status(_: None = Depends(verify_secret)):
+    """Get bulk data refresh status and latest snapshot info."""
+    db = SessionLocal()
+    try:
+        from app.pipeline.bulk_data import BulkDataManager
+        manager = BulkDataManager(db)
+        info = manager.get_snapshot_info()
+
+        resp = {
+            "refreshing": _active_bulk_refresh.get("refreshing", False),
+            "started_at": _active_bulk_refresh.get("started_at"),
+            "total_rows": _active_bulk_refresh.get("total_rows"),
+            "error": _active_bulk_refresh.get("error"),
+        }
+        if info:
+            resp["snapshot_date"] = info.get("snapshot_date")
+            resp["ingested_at"] = info.get("ingested_at")
+            resp["rows_in_table"] = info.get("rows_in_table")
+
+        return BulkStatusResponse(**resp)
+    finally:
+        db.close()
+
+
+def _run_bulk_refresh_thread(url: str = None):
+    """Run bulk data download and ingestion in a background thread."""
+    global _active_bulk_refresh
+    db = SessionLocal()
+
+    try:
+        from app.pipeline.bulk_data import BulkDataManager
+        manager = BulkDataManager(db)
+        stats = manager.refresh(url=url)
+
+        _active_bulk_refresh["total_rows"] = stats.get("total_rows")
+        _active_bulk_refresh["refreshing"] = False
+        logger.info(f"Bulk refresh thread complete: {stats}")
+
+    except Exception as e:
+        logger.error(f"Bulk refresh thread failed: {e}")
+        _active_bulk_refresh["error"] = str(e)
+        _active_bulk_refresh["refreshing"] = False
+    finally:
         db.close()

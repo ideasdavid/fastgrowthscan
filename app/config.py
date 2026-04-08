@@ -35,6 +35,29 @@ INDEX_YEAR_ACCOUNT_PERIODS = {
     2028: {"baseline_year": 2026, "growth_year": 2027},  # FY25/26 vs FY26/27
 }
 
+# ── Bulk data settings ────────────────────────────────────────────────────────
+BULK_DATA_URL = "http://download.companieshouse.gov.uk"
+BULK_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "bulk")
+
+# Account categories to exclude — companies too small to have £1m+ turnover
+EXCLUDED_ACCOUNT_CATEGORIES = [
+    "MICRO ENTITY",
+    "DORMANT",
+    "NO ACCOUNTS FILED",
+    "UNAUDITED ABRIDGED",
+]
+
+# Mapping from CH bulk CSV company type strings → our internal type codes
+BULK_COMPANY_TYPE_MAP = {
+    "Private Limited Company": "ltd",
+    "PRI/LTD BY GUAR/NSC (Private, limited by guarantee, no share capital)": "ltd",
+    "Private Unlimited Company": None,
+    "Public Limited Company": "plc",
+    "Old Public Company": None,
+    "Private Limited Company by guarantee without share capital": None,
+    "Scottish Qualifying Partnership": None,
+}
+
 # SIC codes to include — fast-growth relevant sectors
 # Extend or customise this list as needed
 INCLUDED_SIC_CODES = None  # None = all sectors; set to list of strings to filter

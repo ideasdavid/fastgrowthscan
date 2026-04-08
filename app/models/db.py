@@ -92,6 +92,42 @@ class IndexResult(Base):
     )
 
 
+class BulkCompanySnapshot(Base):
+    """Staging table for Companies House monthly bulk data CSV (~5M rows)."""
+    __tablename__ = "bulk_company_snapshot"
+
+    company_number = Column(String(8), primary_key=True)
+    company_name = Column(String(500), nullable=False)
+    company_status = Column(String(50))
+    company_type = Column(String(100))  # Full text e.g. "Private Limited Company"
+    incorporation_date = Column(String(20))
+    account_category = Column(String(100))  # "MICRO ENTITY", "SMALL", "FULL", etc.
+    sic_code_1 = Column(String(10))
+    sic_code_2 = Column(String(10))
+    sic_code_3 = Column(String(10))
+    sic_code_4 = Column(String(10))
+    postcode = Column(String(15))
+
+    __table_args__ = (
+        Index("ix_bulk_status_type_acct", "company_status", "company_type", "account_category"),
+        Index("ix_bulk_incorporation", "incorporation_date"),
+    )
+
+
+class BulkDataMetadata(Base):
+    """Tracks bulk data snapshot refresh history."""
+    __tablename__ = "bulk_data_metadata"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_file = Column(String(500))
+    snapshot_date = Column(String(20))
+    downloaded_at = Column(DateTime, server_default=func.now())
+    ingested_at = Column(DateTime)
+    total_rows = Column(Integer)
+    filtered_candidates = Column(Integer)
+    notes = Column(Text)
+
+
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
 

@@ -24,10 +24,12 @@ logger = logging.getLogger(__name__)
 
 class FastGrowthPipeline:
 
-    def __init__(self, db: Session, index_year: int, dry_run: bool = False):
+    def __init__(self, db: Session, index_year: int, dry_run: bool = False,
+                 candidate_source: str = "auto"):
         self.db = db
         self.index_year = index_year
         self.dry_run = dry_run
+        self.candidate_source = candidate_source  # "api", "bulk", or "auto"
         self.client = CompaniesHouseClient()
 
         if index_year not in INDEX_YEAR_ACCOUNT_PERIODS:
@@ -92,9 +94,23 @@ class FastGrowthPipeline:
 
     def _get_candidates(self):
         """
-        Yield candidate companies from Companies House search.
-        Filters: active, ltd, incorporated >= 3 years ago.
+        Yield candidate companies from either bulk data or API search.
+        Dispatch based on self.candidate_source.
         """
+        if self.candidate_source == "bulk":
+            yield from self._get_candidates_from_bulk()
+        elif self.candidate_source == "auto":
+            if self._bulk_data_available():
+                logger.info("Bulk data available — using pre-filtered snapshot candidates")
+                yield from self._get_candidates_from_bulk()
+            else:
+                logger.info("No bulk data found — falling back to API search")
+                yield from self._get_candidates_from_api()
+        else:
+            yield from self._get_candidates_from_api()
+
+    def _get_candidates_from_api(self):
+        """Yield candidate companies from Companies House API search."""
         cutoff_date = date(self.growth_year - 3, 1, 1).isoformat()
         seen = set()
 
@@ -109,12 +125,28 @@ class FastGrowthPipeline:
                 continue
             seen.add(number)
 
-            # Filter out recently incorporated companies
             inc_date = company.get("date_of_creation", "")
             if inc_date and inc_date > cutoff_date:
                 continue
 
             yield company
+
+    def _get_candidates_from_bulk(self):
+        """Yield candidate companies from the pre-filtered bulk data snapshot."""
+        from app.pipeline.bulk_data import BulkDataManager
+
+        manager = BulkDataManager(self.db)
+        candidates = manager.apply_pre_filters(
+            growth_year=self.growth_year,
+            sic_codes=INCLUDED_SIC_CODES,
+        )
+        logger.info(f"Bulk data pre-filter returned {len(candidates):,} candidates")
+        yield from candidates
+
+    def _bulk_data_available(self) -> bool:
+        """Check if bulk data has been ingested."""
+        from app.pipeline.bulk_data import BulkDataManager
+        return BulkDataManager(self.db).is_available()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Stage 2 & 3: Fetch financials and score
