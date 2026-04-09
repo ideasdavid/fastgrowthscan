@@ -141,68 +141,137 @@ class BulkDataManager:
     # Ingest
     # ─────────────────────────────────────────────────────────────────────────
 
-    def ingest_csv(self, csv_path: Path, chunk_size: int = 50_000) -> int:
+    def ingest_csv(self, csv_path: Path, chunk_size: int = 25_000) -> int:
         """
         Stream the bulk CSV into the bulk_company_snapshot table.
-        Truncates the table first, then bulk-inserts in chunks.
+        Uses PostgreSQL COPY for speed, loads into a staging table then swaps.
+        Uses session-mode pooler connection (port 5432) with extended timeout.
         Returns total rows ingested.
         """
+        import io
+        import time
+        import psycopg2
+
         logger.info(f"Ingesting {csv_path} into bulk_company_snapshot (chunk_size={chunk_size:,}) ...")
 
-        # Truncate staging table
-        self.db.execute(delete(BulkCompanySnapshot))
-        self.db.commit()
+        # Get connection params from SQLAlchemy engine URL
+        url = self.db.get_bind().url
+        conn = psycopg2.connect(
+            host=url.host,
+            port=5432,  # Session mode (not transaction-mode pooler on 6543)
+            dbname=url.database,
+            user=url.username,
+            password=url.password,
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SET statement_timeout = '600s'")
 
+        # Create a fresh staging table
+        cur.execute("DROP TABLE IF EXISTS bulk_company_snapshot_new")
+        cur.execute("""
+            CREATE TABLE bulk_company_snapshot_new (
+                company_number VARCHAR(8) PRIMARY KEY,
+                company_name VARCHAR(500) NOT NULL,
+                company_status VARCHAR(50),
+                company_type VARCHAR(100),
+                incorporation_date VARCHAR(20),
+                account_category VARCHAR(100),
+                sic_code_1 VARCHAR(10),
+                sic_code_2 VARCHAR(10),
+                sic_code_3 VARCHAR(10),
+                sic_code_4 VARCHAR(10),
+                postcode VARCHAR(15)
+            )
+        """)
+        logger.info("Staging table created")
+
+        columns = [
+            "company_number", "company_name", "company_status", "company_type",
+            "incorporation_date", "account_category",
+            "sic_code_1", "sic_code_2", "sic_code_3", "sic_code_4", "postcode",
+        ]
         total_rows = 0
         batch = []
+        t0 = time.time()
 
         with open(csv_path, "r", encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
 
             for row in reader:
                 record = self._map_csv_row(row)
-                if record:
-                    batch.append(record)
+                if record is None:
+                    continue
+                batch.append(record)
 
                 if len(batch) >= chunk_size:
-                    self._flush_batch(batch)
+                    self._copy_batch(cur, conn, batch, columns)
                     total_rows += len(batch)
                     batch = []
-                    if total_rows % 500_000 == 0:
-                        logger.info(f"  Ingested {total_rows:,} rows ...")
+                    if total_rows % 100_000 == 0:
+                        elapsed = time.time() - t0
+                        rate = total_rows / elapsed if elapsed > 0 else 0
+                        logger.info(f"  {total_rows:,} rows ({elapsed:.0f}s, {rate:.0f} rows/s)")
 
-            # Flush remaining
             if batch:
-                self._flush_batch(batch)
+                self._copy_batch(cur, conn, batch, columns)
                 total_rows += len(batch)
 
-        logger.info(f"Ingestion complete: {total_rows:,} rows")
+        elapsed = time.time() - t0
+        logger.info(f"Ingestion complete: {total_rows:,} rows in {elapsed:.0f}s")
+
+        # Swap tables: _new → main, old → dropped
+        logger.info("Swapping tables ...")
+        cur.execute("ALTER TABLE IF EXISTS bulk_company_snapshot RENAME TO bulk_company_snapshot_old")
+        cur.execute("ALTER TABLE bulk_company_snapshot_new RENAME TO bulk_company_snapshot")
+        cur.execute("DROP TABLE IF EXISTS bulk_company_snapshot_old")
+        logger.info("Table swap complete")
+
+        # Create indexes
+        logger.info("Creating indexes ...")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_bulk_status_type_acct ON bulk_company_snapshot (company_status, company_type, account_category)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_bulk_incorporation ON bulk_company_snapshot (incorporation_date)")
+        logger.info("Indexes created")
+
+        cur.close()
+        conn.close()
         return total_rows
 
-    def _map_csv_row(self, row: dict) -> Optional[dict]:
-        """Map a CSV DictReader row to a bulk_company_snapshot record."""
+    def _map_csv_row(self, row: dict) -> Optional[tuple]:
+        """Map a CSV DictReader row to a tuple for COPY insertion."""
         company_number = (row.get("CompanyNumber") or row.get(" CompanyNumber") or "").strip()
         if not company_number:
             return None
 
-        return {
-            "company_number": company_number.zfill(8),
-            "company_name": (row.get("CompanyName") or "").strip()[:500],
-            "company_status": (row.get("CompanyStatus") or "").strip(),
-            "company_type": (row.get("CompanyCategory") or "").strip(),
-            "incorporation_date": parse_bulk_date(row.get("IncorporationDate", "")),
-            "account_category": (row.get("Accounts.AccountCategory") or "").strip().upper(),
-            "sic_code_1": extract_sic_code(row.get("SICCode.SicText_1", "")),
-            "sic_code_2": extract_sic_code(row.get("SICCode.SicText_2", "")),
-            "sic_code_3": extract_sic_code(row.get("SICCode.SicText_3", "")),
-            "sic_code_4": extract_sic_code(row.get("SICCode.SicText_4", "")),
-            "postcode": (row.get("RegAddress.PostCode") or "").strip()[:15],
-        }
+        return (
+            company_number.zfill(8),
+            (row.get("CompanyName") or "").strip()[:500],
+            (row.get("CompanyStatus") or "").strip(),
+            (row.get("CompanyCategory") or "").strip(),
+            parse_bulk_date(row.get("IncorporationDate", "")),
+            (row.get("Accounts.AccountCategory") or "").strip().upper(),
+            extract_sic_code(row.get("SICCode.SicText_1", "")),
+            extract_sic_code(row.get("SICCode.SicText_2", "")),
+            extract_sic_code(row.get("SICCode.SicText_3", "")),
+            extract_sic_code(row.get("SICCode.SicText_4", "")),
+            (row.get("RegAddress.PostCode") or "").strip()[:15],
+        )
 
-    def _flush_batch(self, batch: list[dict]):
-        """Bulk-insert a batch of records using SQLAlchemy Core for speed."""
-        self.db.execute(insert(BulkCompanySnapshot), batch)
-        self.db.commit()
+    @staticmethod
+    def _copy_batch(cur, conn, batch: list[tuple], columns: list[str]):
+        """Bulk-insert a batch using PostgreSQL COPY for speed over remote connections."""
+        import io
+        buf = io.StringIO()
+        for record in batch:
+            vals = []
+            for v in record:
+                if v is None:
+                    vals.append("\\N")
+                else:
+                    vals.append(str(v).replace("\\", "\\\\").replace("\t", " ").replace("\n", " ").replace("\r", ""))
+            buf.write("\t".join(vals) + "\n")
+        buf.seek(0)
+        cur.copy_from(buf, "bulk_company_snapshot_new", columns=columns, null="\\N")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Pre-filter
