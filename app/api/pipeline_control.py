@@ -720,6 +720,93 @@ def _run_reprocess_thread(index_year: int, limit: Optional[int]):
         db.close()
 
 
+# ── Bulk Data Explorer ────────────────────────────────────────────────────────
+
+
+@router.get("/bulk/explore")
+def explore_bulk_data(
+    search: Optional[str] = None,
+    company_status: Optional[str] = None,
+    company_type: Optional[str] = None,
+    account_category: Optional[str] = None,
+    sic_code: Optional[str] = None,
+    postcode: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Query the bulk company snapshot with filters and pagination."""
+    from app.models.db import BulkCompanySnapshot
+    from sqlalchemy import or_
+
+    db = SessionLocal()
+    try:
+        query = db.query(BulkCompanySnapshot)
+
+        if search:
+            query = query.filter(BulkCompanySnapshot.company_name.ilike(f"%{search}%"))
+        if company_status:
+            query = query.filter(BulkCompanySnapshot.company_status == company_status)
+        if company_type:
+            query = query.filter(BulkCompanySnapshot.company_type == company_type)
+        if account_category:
+            query = query.filter(BulkCompanySnapshot.account_category == account_category)
+        if sic_code:
+            query = query.filter(
+                or_(
+                    BulkCompanySnapshot.sic_code_1.like(f"{sic_code}%"),
+                    BulkCompanySnapshot.sic_code_2.like(f"{sic_code}%"),
+                    BulkCompanySnapshot.sic_code_3.like(f"{sic_code}%"),
+                    BulkCompanySnapshot.sic_code_4.like(f"{sic_code}%"),
+                )
+            )
+        if postcode:
+            query = query.filter(BulkCompanySnapshot.postcode.ilike(f"{postcode}%"))
+
+        total = query.count()
+        rows = query.order_by(BulkCompanySnapshot.company_name).offset(offset).limit(limit).all()
+
+        return {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "results": [
+                {
+                    "company_number": r.company_number,
+                    "company_name": r.company_name,
+                    "company_status": r.company_status,
+                    "company_type": r.company_type,
+                    "incorporation_date": r.incorporation_date,
+                    "account_category": r.account_category,
+                    "sic_codes": [c for c in [r.sic_code_1, r.sic_code_2, r.sic_code_3, r.sic_code_4] if c],
+                    "postcode": r.postcode,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+@router.get("/bulk/filters")
+def get_bulk_filters():
+    """Return distinct values for bulk data filter dropdowns."""
+    from app.models.db import BulkCompanySnapshot
+
+    db = SessionLocal()
+    try:
+        statuses = [r[0] for r in db.query(BulkCompanySnapshot.company_status).distinct().all() if r[0]]
+        types = [r[0] for r in db.query(BulkCompanySnapshot.company_type).distinct().all() if r[0]]
+        categories = [r[0] for r in db.query(BulkCompanySnapshot.account_category).distinct().all() if r[0]]
+
+        return {
+            "statuses": sorted(statuses),
+            "company_types": sorted(types),
+            "account_categories": sorted(categories),
+        }
+    finally:
+        db.close()
+
+
 # ── Bulk Data Refresh ─────────────────────────────────────────────────────────
 
 _active_bulk_refresh: dict = {}
