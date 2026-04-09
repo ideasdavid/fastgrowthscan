@@ -784,7 +784,12 @@ def get_bulk_status(_: None = Depends(verify_secret)):
     try:
         from app.pipeline.bulk_data import BulkDataManager
         manager = BulkDataManager(db)
-        info = manager.get_snapshot_info()
+        try:
+            info = manager.get_snapshot_info()
+        except Exception as e:
+            logger.warning(f"Failed to get snapshot info: {e}")
+            db.rollback()
+            info = None
 
         resp = {
             "refreshing": _active_bulk_refresh.get("refreshing", False),

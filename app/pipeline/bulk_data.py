@@ -431,8 +431,6 @@ class BulkDataManager:
         if not meta:
             return None
 
-        total_in_table = self.db.query(func.count()).select_from(BulkCompanySnapshot).scalar()
-
         return {
             "id": meta.id,
             "source_file": meta.source_file,
@@ -440,7 +438,7 @@ class BulkDataManager:
             "downloaded_at": meta.downloaded_at.isoformat() if meta.downloaded_at else None,
             "ingested_at": meta.ingested_at.isoformat() if meta.ingested_at else None,
             "total_rows": meta.total_rows,
-            "rows_in_table": total_in_table,
+            "rows_in_table": meta.total_rows,  # Use metadata instead of COUNT(*) to avoid timeout
         }
 
     def is_available(self) -> bool:
