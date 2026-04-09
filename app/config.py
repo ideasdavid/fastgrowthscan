@@ -58,6 +58,43 @@ BULK_COMPANY_TYPE_MAP = {
     "Scottish Qualifying Partnership": None,
 }
 
+# ── Candidate tiering ─────────────────────────────────────────────────────────
+# Tiers control the order in which candidates are processed from bulk data.
+# Higher-priority tiers are processed first so the best candidates are found early.
+# Each tier defines account_categories to include and an age range (years since incorporation).
+CANDIDATE_TIERS = [
+    {
+        "name": "Tier 1: Large companies, young (FULL accounts, 3-15 years)",
+        "account_categories": ["FULL"],
+        "min_age": 3,
+        "max_age": 15,
+    },
+    {
+        "name": "Tier 2: Large companies, established (FULL accounts, 16+ years)",
+        "account_categories": ["FULL"],
+        "min_age": 16,
+        "max_age": None,
+    },
+    {
+        "name": "Tier 3: Medium companies (MEDIUM, 3-15 years)",
+        "account_categories": ["MEDIUM"],
+        "min_age": 3,
+        "max_age": 15,
+    },
+    {
+        "name": "Tier 4: Audit-exempt full accounts (TOTAL EXEMPTION FULL, 3-15 years)",
+        "account_categories": ["TOTAL EXEMPTION FULL"],
+        "min_age": 3,
+        "max_age": 15,
+    },
+    {
+        "name": "Tier 5: Small companies (SMALL/GROUP, 3-10 years)",
+        "account_categories": ["SMALL", "GROUP"],
+        "min_age": 3,
+        "max_age": 10,
+    },
+]
+
 # SIC codes to include — fast-growth relevant sectors
 # Extend or customise this list as needed
 INCLUDED_SIC_CODES = None  # None = all sectors; set to list of strings to filter

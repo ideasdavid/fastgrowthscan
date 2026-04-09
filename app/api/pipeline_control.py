@@ -50,6 +50,8 @@ class PipelineStatusResponse(BaseModel):
     manual_review: int = 0
     does_not_qualify: int = 0
     error: Optional[str] = None
+    current_tier: Optional[str] = None
+    tier_candidates: int = 0
 
 
 @router.post("/run")
@@ -416,6 +418,8 @@ def _run_pipeline_thread(
             _active_run["qualifies"] = pipeline.stats.get("qualifies", 0)
             _active_run["manual_review"] = pipeline.stats.get("manual_review", 0)
             _active_run["does_not_qualify"] = pipeline.stats.get("does_not_qualify", 0)
+            _active_run["current_tier"] = pipeline.stats.get("current_tier")
+            _active_run["tier_candidates"] = pipeline.stats.get("tier_candidates", 0)
 
         pipeline._process_company = tracked_process
         pipeline.run()

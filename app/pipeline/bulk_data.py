@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.config import (
     BULK_DATA_URL, BULK_DATA_DIR,
     EXCLUDED_ACCOUNT_CATEGORIES, BULK_COMPANY_TYPE_MAP,
-    VALID_COMPANY_STATUSES,
+    VALID_COMPANY_STATUSES, CANDIDATE_TIERS,
 )
 from app.models.db import BulkCompanySnapshot, BulkDataMetadata
 
@@ -339,6 +339,88 @@ class BulkDataManager:
             })
 
         return candidates
+
+    def iter_tiered_candidates(
+        self,
+        growth_year: int,
+        sic_codes: list[str] = None,
+        tier_callback=None,
+    ):
+        """
+        Yield candidates tier by tier based on CANDIDATE_TIERS config.
+        Higher-priority tiers (FULL accounts, younger companies) are yielded first.
+
+        tier_callback(tier_name, tier_count) is called at the start of each tier
+        so the pipeline can update progress tracking.
+        """
+        t = BulkCompanySnapshot
+
+        valid_csv_types = [
+            csv_type for csv_type, internal in BULK_COMPANY_TYPE_MAP.items()
+            if internal is not None
+        ]
+
+        seen = set()
+
+        for tier in CANDIDATE_TIERS:
+            tier_name = tier["name"]
+            min_age = tier.get("min_age", 3)
+            max_age = tier.get("max_age")
+            account_cats = tier["account_categories"]
+
+            # Age bounds: min_age=3 means incorporated on or before growth_year-3
+            cutoff_young = f"{growth_year - min_age}-12-31"
+            query = (
+                select(t)
+                .where(t.company_status == "Active")
+                .where(t.company_type.in_(valid_csv_types))
+                .where(t.incorporation_date <= cutoff_young)
+                .where(t.incorporation_date.isnot(None))
+                .where(t.account_category.in_(account_cats))
+            )
+
+            if max_age is not None:
+                cutoff_old = f"{growth_year - max_age}-01-01"
+                query = query.where(t.incorporation_date >= cutoff_old)
+
+            if sic_codes:
+                from sqlalchemy import or_
+                query = query.where(
+                    or_(
+                        t.sic_code_1.in_(sic_codes),
+                        t.sic_code_2.in_(sic_codes),
+                        t.sic_code_3.in_(sic_codes),
+                        t.sic_code_4.in_(sic_codes),
+                    )
+                )
+
+            rows = self.db.execute(query).scalars().all()
+            tier_count = 0
+
+            for row in rows:
+                if row.company_number in seen:
+                    continue
+                seen.add(row.company_number)
+                tier_count += 1
+
+                sic_list = [c for c in [row.sic_code_1, row.sic_code_2, row.sic_code_3, row.sic_code_4] if c]
+                internal_type = BULK_COMPANY_TYPE_MAP.get(row.company_type, "ltd")
+
+                yield {
+                    "company_number": row.company_number,
+                    "company_name": row.company_name,
+                    "company_status": "active",
+                    "company_type": internal_type,
+                    "date_of_creation": row.incorporation_date,
+                    "sic_codes": sic_list,
+                    "registered_office_address": {"postal_code": row.postcode},
+                    "_tier": tier_name,
+                }
+
+            logger.info(f"{tier_name}: {tier_count:,} candidates")
+
+            if tier_callback:
+                tier_callback(tier_name, tier_count)
 
     def count_pre_filtered(self, growth_year: int, sic_codes: list[str] = None) -> int:
         """Return the count of candidates that would pass pre-filtering (without loading them all)."""

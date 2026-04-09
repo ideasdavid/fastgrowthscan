@@ -45,6 +45,8 @@ class FastGrowthPipeline:
             "manual_review": 0,
             "does_not_qualify": 0,
             "error": 0,
+            "current_tier": None,
+            "tier_candidates": 0,
         }
 
     def run(self):
@@ -132,16 +134,21 @@ class FastGrowthPipeline:
             yield company
 
     def _get_candidates_from_bulk(self):
-        """Yield candidate companies from the pre-filtered bulk data snapshot."""
+        """Yield candidate companies from the pre-filtered bulk data snapshot, tiered by priority."""
         from app.pipeline.bulk_data import BulkDataManager
 
         manager = BulkDataManager(self.db)
-        candidates = manager.apply_pre_filters(
+
+        def on_tier(tier_name, tier_count):
+            self.stats["current_tier"] = tier_name
+            self.stats["tier_candidates"] = tier_count
+            logger.info(f"Tier complete: {tier_name} ({tier_count:,} candidates)")
+
+        yield from manager.iter_tiered_candidates(
             growth_year=self.growth_year,
             sic_codes=INCLUDED_SIC_CODES,
+            tier_callback=on_tier,
         )
-        logger.info(f"Bulk data pre-filter returned {len(candidates):,} candidates")
-        yield from candidates
 
     def _bulk_data_available(self) -> bool:
         """Check if bulk data has been ingested."""
